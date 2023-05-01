@@ -1,10 +1,10 @@
 package com.mesum.camscanner
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.Intent
+import android.content.*
 import android.content.pm.PackageManager
+import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -19,26 +19,17 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.lifecycle.LifecycleOwner
 import com.google.android.gms.vision.Frame
 import com.google.android.gms.vision.text.TextRecognizer
 import com.itextpdf.text.Document
 import com.itextpdf.text.Image
-import com.itextpdf.text.Paragraph
 import com.itextpdf.text.pdf.PdfWriter
-import java.io.File
-import java.io.FileOutputStream
-import java.io.FilterOutputStream
-import java.io.IOException
+import java.io.*
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.concurrent.ExecutionException
 
 
 class MainActivity : AppCompatActivity() {
@@ -242,22 +233,83 @@ class MainActivity : AppCompatActivity() {
         // Finish the page and add it to the document
         document.finishPage(page)
 
+        sharePdf(this, pdfFile)
         // Write the document to the PDF file
-        val outputStream = FileOutputStream(pdfFile)
-        document.writeTo(outputStream)
+//        val outputStream = FileOutputStream(pdfFile)
+//        document.writeTo(outputStream)
+//
+//        // Close the document and the output stream
+//        document.close()
+//        outputStream.close()
+//        val file = File(getExternalFilesDir(null), "text.pdf")
+//        val uri = FileProvider.getUriForFile(this, "com.mesum.camscanner.provider", file)
+//        val writer = BufferedWriter(FileWriter(file))
+//        writer.write("Hello, world!")
+//        writer.close()
+//
+//        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+//            type = "application/pdf"
+//            putExtra(Intent.EXTRA_STREAM, uri)
+//        }
+//        startActivity(Intent.createChooser(shareIntent, "Share PDF"))
 
-        // Close the document and the output stream
-        document.close()
-        outputStream.close()
+    }
 
-        // Share the PDF file with other apps using a FileProvider
-        val uri = FileProvider.getUriForFile(this, "com.mesum.camscanner.fileprovider", pdfFile)
-        val intent = Intent(Intent.ACTION_VIEW)
-        intent.setDataAndType(uri, "application/pdf")
+
+    private fun sharePdf(context: Context, pdfFile: File) {
+        val resolver: ContentResolver = context.getContentResolver()
+        val values = ContentValues()
+        values.put(MediaStore.Files.FileColumns.DISPLAY_NAME, "my_file.pdf")
+        values.put(MediaStore.Files.FileColumns.MIME_TYPE, "application/pdf")
+        values.put(MediaStore.Files.FileColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+
+        // Check if the file already exists in the media store
+        var uri: Uri? = null
+        val cursor: Cursor? = resolver.query(
+            MediaStore.Files.getContentUri("external"), null,
+            MediaStore.Files.FileColumns.DISPLAY_NAME + "=?", arrayOf("my_file.pdf"), null
+        )
+        if (cursor != null && cursor.moveToFirst()) {
+            uri = ContentUris.withAppendedId(
+                MediaStore.Files.getContentUri("external"),
+                cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID))
+            )
+            cursor.close()
+        } else {
+            // Insert the file into the media store and get the content URI
+            uri = try {
+                resolver.insert(MediaStore.Files.getContentUri("external"), values)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                return
+            }
+        }
+        if (uri == null) {
+            return
+        }
+        try {
+            resolver.openOutputStream(uri).use { out ->
+                if (out != null) {
+                    val `in` = FileInputStream(pdfFile)
+                    val buffer = ByteArray(4096)
+                    var bytesRead: Int
+                    while (`in`.read(buffer).also { bytesRead = it } != -1) {
+                        out.write(buffer, 0, bytesRead)
+                    }
+                    `in`.close()
+                    out.flush()
+                    out.close()
+                }
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+            return
+        }
+        val intent = Intent(Intent.ACTION_SEND)
+        intent.type = "application/pdf"
+        intent.putExtra(Intent.EXTRA_STREAM, uri)
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        val chooserIntent = Intent.createChooser(intent, "Open PDF")
-        chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(chooserIntent)
+        context.startActivity(Intent.createChooser(intent, "Share PDF file"))
     }
 
 
