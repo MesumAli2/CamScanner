@@ -328,9 +328,9 @@ class MainActivity : AppCompatActivity() {
 
     fun scalePicture(bitmap: Bitmap){
 
-        // Load image from bitmap
+// Load image from bitmap
         val bitmap: Bitmap = bitmap
-        // your bitmap
+            // your bitmap
         val mat = Mat(bitmap.height, bitmap.width, CvType.CV_8UC4)
         Utils.bitmapToMat(bitmap, mat)
 
@@ -363,15 +363,20 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-// Draw a bounding box around the contour with the largest area
+// Crop the image around the bounding box
         val rect = Imgproc.boundingRect(maxContour)
-        Imgproc.rectangle(mat, rect.tl(), rect.br(), Scalar(0.0, 255.0, 0.0), 2)
+        val croppedImage = Mat(mat, rect)
 
 // Convert Mat back to bitmap
-        Utils.matToBitmap(mat, bitmap)
+        val croppedBitmap = Bitmap.createBitmap(croppedImage.cols(), croppedImage.rows(), Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(croppedImage, croppedBitmap)
+
+// Display the cropped image
+// imageView.setImageBitmap(croppedBitmap)
+
 
 // Display the result
-     findViewById<ImageView>(R.id.imageView).setImageBitmap(bitmap)
+     findViewById<ImageView>(R.id.imageView).setImageBitmap(croppedBitmap)
 
 
     }
