@@ -27,6 +27,11 @@ import com.google.android.gms.vision.text.TextRecognizer
 import com.itextpdf.text.Document
 import com.itextpdf.text.Image
 import com.itextpdf.text.pdf.PdfWriter
+import org.opencv.android.OpenCVLoader
+import org.opencv.android.Utils
+import org.opencv.core.*
+import org.opencv.imgcodecs.Imgcodecs
+import org.opencv.imgproc.Imgproc
 import java.io.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -47,6 +52,11 @@ class MainActivity : AppCompatActivity() {
             cameraPicker()
         }
 
+        if (OpenCVLoader.initDebug()){
+            Log.d("MainAct", "open cv is loaded")
+        }else{
+            Log.d("MainACt", "not loaded")
+        }
 
 
 
@@ -162,8 +172,12 @@ class MainActivity : AppCompatActivity() {
                 if (resultCode == Activity.RESULT_OK) {
                     val bundle = data?.getStringExtra("image_path")
                     val bitmap = BitmapFactory.decodeFile(mCurrentPhotoPath)
-                    findViewById<ImageView>(R.id.imageView).setImageBitmap(bitmap)
-                    recognizeText(bitmap)
+                  //  findViewById<ImageView>(R.id.imageView).setImageBitmap(bitmap)
+                    if (bitmap != null){
+                        scalePicture(bitmap)
+
+                    }
+               //     recognizeText(bitmap)
                     Log.d("ImageData","bitmap : ${bitmap.toString()} bundle : ${bundle.toString()}"  )
                 }
 
@@ -312,5 +326,59 @@ class MainActivity : AppCompatActivity() {
         context.startActivity(Intent.createChooser(intent, "Share PDF file"))
     }
 
+    fun scalePicture(bitmap: Bitmap){
 
-}
+        // Load image from bitmap
+        val bitmap: Bitmap = bitmap
+        // your bitmap
+        val mat = Mat(bitmap.height, bitmap.width, CvType.CV_8UC4)
+        Utils.bitmapToMat(bitmap, mat)
+
+// Convert image to grayscale
+        val grayImage = Mat()
+        Imgproc.cvtColor(mat, grayImage, Imgproc.COLOR_BGR2GRAY)
+
+// Apply a Gaussian blur to the image
+        val blurredImage = Mat()
+        Imgproc.GaussianBlur(grayImage, blurredImage, Size(5.0, 5.0), 0.0)
+
+// Perform edge detection on the blurred image
+        val edges = Mat()
+        Imgproc.Canny(blurredImage, edges, 75.0, 200.0)
+
+// Find contours in the edge image
+        val contours = mutableListOf<MatOfPoint>()
+        Imgproc.findContours(edges, contours, Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
+
+// Find the contour with the largest area
+        var maxArea = -1.0
+        var maxAreaIdx = -1
+        var maxContour = MatOfPoint()
+        for (i in 0 until contours.size) {
+            val area = Imgproc.contourArea(contours[i])
+            if (area > maxArea) {
+                maxArea = area
+                maxAreaIdx = i
+                maxContour = contours[i]
+            }
+        }
+
+// Draw a bounding box around the contour with the largest area
+        val rect = Imgproc.boundingRect(maxContour)
+        Imgproc.rectangle(mat, rect.tl(), rect.br(), Scalar(0.0, 255.0, 0.0), 2)
+
+// Convert Mat back to bitmap
+        Utils.matToBitmap(mat, bitmap)
+
+// Display the result
+     findViewById<ImageView>(R.id.imageView).setImageBitmap(bitmap)
+
+
+    }
+
+
+
+
+    }
+
+
