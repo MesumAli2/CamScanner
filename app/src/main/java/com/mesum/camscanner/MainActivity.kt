@@ -3,6 +3,7 @@ package com.mesum.camscanner
 import android.Manifest
 import android.app.Activity
 import android.content.*
+import android.content.ContentValues.TAG
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.graphics.Bitmap
@@ -174,7 +175,7 @@ class MainActivity : AppCompatActivity() {
                     val bitmap = BitmapFactory.decodeFile(mCurrentPhotoPath)
                   //  findViewById<ImageView>(R.id.imageView).setImageBitmap(bitmap)
                     if (bitmap != null){
-                        scalePicture(bitmap)
+                        scanImage(bitmap)
 
                     }
                //     recognizeText(bitmap)
@@ -326,59 +327,64 @@ class MainActivity : AppCompatActivity() {
         context.startActivity(Intent.createChooser(intent, "Share PDF file"))
     }
 
-    fun scalePicture(bitmap: Bitmap){
-
-// Load image from bitmap
-        val bitmap: Bitmap = bitmap
-            // your bitmap
+    fun scanImage(bitmap: Bitmap) {
+        // Load image from bitmap
         val mat = Mat(bitmap.height, bitmap.width, CvType.CV_8UC4)
         Utils.bitmapToMat(bitmap, mat)
 
-// Convert image to grayscale
+        // Convert image to grayscale
         val grayImage = Mat()
         Imgproc.cvtColor(mat, grayImage, Imgproc.COLOR_BGR2GRAY)
 
-// Apply a Gaussian blur to the image
+        // Apply a Gaussian blur to the image
         val blurredImage = Mat()
         Imgproc.GaussianBlur(grayImage, blurredImage, Size(5.0, 5.0), 0.0)
 
-// Perform edge detection on the blurred image
-        val edges = Mat()
-        Imgproc.Canny(blurredImage, edges, 75.0, 200.0)
+        // Threshold the image to filter out non-paper regions
+        val thresholded = Mat()
+        Imgproc.threshold(blurredImage, thresholded, 0.0, 255.0, Imgproc.THRESH_BINARY or Imgproc.THRESH_OTSU)
 
-// Find contours in the edge image
+        // Perform edge detection on the thresholded image
+        val edges = Mat()
+        Imgproc.Canny(thresholded, edges, 75.0, 200.0)
+
+        // Find contours in the edge image
         val contours = mutableListOf<MatOfPoint>()
         Imgproc.findContours(edges, contours, Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
 
-// Find the contour with the largest area
+        // Find the contour with the largest area and verify it satisfies the geometric constraints of a paper document
         var maxArea = -1.0
-        var maxAreaIdx = -1
         var maxContour = MatOfPoint()
-        for (i in 0 until contours.size) {
-            val area = Imgproc.contourArea(contours[i])
-            if (area > maxArea) {
-                maxArea = area
-                maxAreaIdx = i
-                maxContour = contours[i]
+        for (contour in contours) {
+            val area = Imgproc.contourArea(contour)
+            val perimeter = Imgproc.arcLength(MatOfPoint2f(*contour.toArray()), true)
+            val approx = MatOfPoint2f()
+            Imgproc.approxPolyDP(MatOfPoint2f(*contour.toArray()), approx, 0.02 * perimeter, true)
+            if (area > maxArea && approx.toList().size == 4 && Imgproc.isContourConvex(MatOfPoint(*approx.toArray()))) {
+                val rect = Imgproc.boundingRect(contour)
+                val aspectRatio = rect.width.toFloat() / rect.height.toFloat()
+                if (aspectRatio > 0.6 && aspectRatio < 1.4 && rect.width > 100 && rect.height > 100) {
+                    maxArea = area
+                    maxContour = contour
+                }
             }
         }
 
-// Crop the image around the bounding box
+        // Crop the image around the bounding box of the largest contour
         val rect = Imgproc.boundingRect(maxContour)
         val croppedImage = Mat(mat, rect)
 
-// Convert Mat back to bitmap
-        val croppedBitmap = Bitmap.createBitmap(croppedImage.cols(), croppedImage.rows(), Bitmap.Config.ARGB_8888)
-        Utils.matToBitmap(croppedImage, croppedBitmap)
-
-// Display the cropped image
-// imageView.setImageBitmap(croppedBitmap)
-
-
-// Display the result
-     findViewById<ImageView>(R.id.imageView).setImageBitmap(croppedBitmap)
-
-
+        // Check if croppedImage has valid dimensions
+        if (croppedImage.cols() > 0 && croppedImage.rows() > 0) {
+            // Create a bitmap from the cropped image
+            val croppedBitmap = Bitmap.createBitmap(croppedImage.cols(), croppedImage.rows(), Bitmap.Config.ARGB_8888)
+            Utils.matToBitmap(croppedImage, croppedBitmap)
+            // Display the result
+            findViewById<ImageView>(R.id.imageView).setImageBitmap(croppedBitmap)
+        } else {
+            // Display an error message or take some other action
+            Log.e(TAG, "Invalid dimensions for croppedImage")
+        }
     }
 
 
