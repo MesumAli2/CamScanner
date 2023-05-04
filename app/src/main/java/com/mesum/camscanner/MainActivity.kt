@@ -342,11 +342,18 @@ class MainActivity : AppCompatActivity() {
 
         // Threshold the image to filter out non-paper regions
         val thresholded = Mat()
-        Imgproc.threshold(blurredImage, thresholded, 0.0, 255.0, Imgproc.THRESH_BINARY or Imgproc.THRESH_OTSU)
+        Imgproc.threshold(blurredImage, thresholded, 0.0, 255.0, Imgproc.THRESH_BINARY_INV or Imgproc.THRESH_OTSU)
+
+        // Perform morphological operations to clean up the thresholded image
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
+        val closed = Mat()
+        Imgproc.morphologyEx(thresholded, closed, Imgproc.MORPH_CLOSE, kernel)
+        val opened = Mat()
+        Imgproc.morphologyEx(closed, opened, Imgproc.MORPH_OPEN, kernel)
 
         // Perform edge detection on the thresholded image
         val edges = Mat()
-        Imgproc.Canny(thresholded, edges, 75.0, 200.0)
+        Imgproc.Canny(opened, edges, 75.0, 200.0)
 
         // Find contours in the edge image
         val contours = mutableListOf<MatOfPoint>()
@@ -383,7 +390,8 @@ class MainActivity : AppCompatActivity() {
             findViewById<ImageView>(R.id.imageView).setImageBitmap(croppedBitmap)
         } else {
             // Display an error message or take some other action
-            Log.e(TAG, "Invalid dimensions for croppedImage")
+            Toast.makeText(this, "No scan doc detected", Toast.LENGTH_SHORT).show()
+
         }
     }
 
